@@ -64,30 +64,25 @@ jobs:
         if: ${{ inputs.iconUrl != '' }}
         run: |
           mkdir -p /tmp/icon
-          curl -L "${{ inputs.iconUrl }}" -o /tmp/icon/icon.png
+          EXT="${{ inputs.iconUrl##*. }}"
+          ICON_TMP="/tmp/icon/icon.$EXT"
+          curl -L "${{ inputs.iconUrl }}" -o "$ICON_TMP"
 
           sudo apt-get update
-          sudo apt-get install -y imagemagick
+          sudo apt-get install -y imagemagick webp
 
           declare -A icons=(
-            ["mipmap-mdpi"]="ic_launcher.png"
-            ["mipmap-hdpi"]="ic_launcher.png"
-            ["mipmap-xhdpi"]="ic_launcher.png"
-            ["mipmap-xxhdpi"]="ic_launcher.png"
-            ["mipmap-xxxhdpi"]="ic_launcher.png"
-            ["mipmap-anydpi-v26"]="ic_launcher.xml"
-            ["mipmap-mdpi-v26"]="ic_launcher_round.png"
-            ["mipmap-hdpi-v26"]="ic_launcher_round.png"
-            ["mipmap-xhdpi-v26"]="ic_launcher_round.png"
-            ["mipmap-xxhdpi-v26"]="ic_launcher_round.png"
-            ["mipmap-xxxhdpi-v26"]="ic_launcher_round.png"
+            ["ic_launcher"]="ic_launcher.webp" 
+            ["ic_launcher_round"]="ic_launcher_round.webp" 
           )
 
-          for dir in "${!icons[@]}"; do
-            TARGET="$ANDROID_DIR/app/src/main/res/$dir/${icons[$dir]}"
-            if [ -f "$TARGET" ]; then
-              convert /tmp/icon/icon.png -resize 192x192 "$TARGET"
-            fi
+          for name in "${!icons[@]}"; do
+            for dir in "$ANDROID_DIR"/app/src/main/res/mipmap-*; do
+              TARGET="$dir/${icons[$name]}"
+              if [ -f "$TARGET" ] || [[ "$name" == "ic_launcher" ]]; then
+                convert "$ICON_TMP" -resize 192x192 "$TARGET"
+              fi
+            done
           done
 
       - name: Build APK
@@ -100,8 +95,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: |
-            AndroidWebviewTemplate/app/build/outputs/apk/debug/*.apk
+          path: "$ANDROID_DIR/app/build/outputs/apk/debug/*.apk"
 
       - name: List APKs
-        run: ls -la AndroidWebviewTemplate/app/build/outputs/apk/debug/
+        run: ls -la "$ANDROID_DIR/app/build/outputs/apk/debug/"
