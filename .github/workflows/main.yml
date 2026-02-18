@@ -26,7 +26,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -61,14 +61,14 @@ jobs:
           sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
 
       - name: Download & Replace App Icon
-        if: inputs.iconUrl != ''
+        if: ${{ inputs.iconUrl != '' }}
         run: |
           mkdir -p /tmp/icon
           curl -L "${{ inputs.iconUrl }}" -o /tmp/icon/icon.png
 
           sudo apt-get update
           sudo apt-get install -y imagemagick
- 
+
           declare -A icons=(
             ["mipmap-mdpi"]="ic_launcher.png"
             ["mipmap-hdpi"]="ic_launcher.png"
@@ -101,4 +101,7 @@ jobs:
         with:
           name: apk
           path: |
-            "$ANDROID_DIR"/app/build/outputs/apk/debug/*.apk
+            AndroidWebviewTemplate/app/build/outputs/apk/debug/*.apk
+
+      - name: List APKs
+        run: ls -la AndroidWebviewTemplate/app/build/outputs/apk/debug/
