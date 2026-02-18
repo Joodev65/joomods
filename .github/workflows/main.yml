@@ -5,13 +5,10 @@ on:
     inputs:
       appName:
         required: true
-        type: string
       appUrl:
         required: true
-        type: string
       iconUrl:
         required: false
-        type: string
 
 jobs:
   build:
@@ -30,25 +27,43 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Inject App URL
+      - name: Locate Android Project
+        id: locate
         run: |
-          FILE=$(find . -name MainActivity.kt | head -n 1)
-          echo "Found MainActivity at: $FILE"
-
-          if [ -z "$FILE" ]; then
-            echo "MainActivity.kt NOT FOUND"
+          ROOT=$(find . -name gradlew | head -n 1)
+          if [ -z "$ROOT" ]; then
+            echo "Gradlew not found"
             exit 1
           fi
+          DIR=$(dirname "$ROOT")
+          echo "ANDROID_DIR=$DIR" >> $GITHUB_ENV
+          echo "Android dir: $DIR"
 
-          sed -i "s|%APP_URL%|${{ inputs.appUrl }}|g" "$FILE"
-
+      - name: Inject App Name
+        run: |
+          STRINGS=$(find "$ANDROID_DIR" -path "*res/values/strings.xml" | head -n 1)
+          if [ -z "$STRINGS" ]; then
+            echo "strings.xml not found"
+            exit 1
+          fi
+          sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${{ inputs.appName }}</string>|" "$STRINGS"
+ 
+      - name: Inject App URL
+        run: |
+          FILE=$(find "$ANDROID_DIR" -name MainActivity.kt | head -n 1)
+          if [ -z "$FILE" ]; then
+            echo "MainActivity.kt not found"
+            exit 1
+          fi
+          sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
+          
       - name: Download Icon
         if: inputs.iconUrl != ''
         run: |
           mkdir -p /tmp/icon
           curl -L "${{ inputs.iconUrl }}" -o /tmp/icon/icon.png
 
-      - name: Resize & Replace Icon
+      - name: Replace App Icon
         if: inputs.iconUrl != ''
         run: |
           sudo apt-get update
@@ -62,25 +77,19 @@ jobs:
             ["mipmap-xxxhdpi"]=192
           )
 
-          RES_DIR=$(find . -path "*/src/main/res" | head -n 1)
-
-          if [ -z "$RES_DIR" ]; then
-            echo "res directory NOT FOUND"
-            exit 1
-          fi
-
           for dir in "${!icons[@]}"; do
             size=${icons[$dir]}
-            mkdir -p "$RES_DIR/$dir"
-            convert /tmp/icon/icon.png -resize ${size}x${size} \
-              "$RES_DIR/$dir/ic_launcher.png"
+            TARGET="$ANDROID_DIR/app/src/main/res/$dir/ic_launcher.png"
+            if [ -f "$TARGET" ]; then
+              convert /tmp/icon/icon.png -resize ${size}x${size} "$TARGET"
+            fi
           done
-
-      - name: Grant Gradle Permission
-        run: chmod +x ./gradlew
-
+ 
       - name: Build APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          cd "$ANDROID_DIR"
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
