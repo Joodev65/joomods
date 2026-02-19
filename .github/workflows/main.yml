@@ -12,9 +12,6 @@ on:
       iconUrl:
         description: 'URL icon (opsional, png/jpg/webp)'
         required: false
-      backgroundUrl:
-        description: 'URL background (opsional PNG)'
-        required: false
 
 jobs:
   build:
@@ -54,55 +51,23 @@ jobs:
           FILE=$(find "$ANDROID_DIR" -name MainActivity.kt | head -n 1)
           sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
 
-      - name: Download & Replace All Mipmap Icons
-        if: ${{ inputs.iconUrl != '' || inputs.backgroundUrl != '' }}
+      - name: Replace mipmap default icons (192x192 kotak)
+        if: ${{ inputs.iconUrl != '' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick webp curl
+          sudo apt-get install -y imagemagick curl
 
-          declare -A dpi_sizes=( 
-            ["mipmap-mdpi"]=48 
-            ["mipmap-hdpi"]=72
-            ["mipmap-xhdpi"]=96
-            ["mipmap-xxhdpi"]=144
-            ["mipmap-xxxhdpi"]=192
-          )
+          MIPMAP_DIR="$ANDROID_DIR/app/src/main/res/mipmap"
+          mkdir -p "$MIPMAP_DIR"
 
-          # Download temporary files
-          if [ "${{ inputs.iconUrl }}" != "" ]; then
-            curl -L "${{ inputs.iconUrl }}" -o /tmp/ic_launcher_foreground.png
-          fi
+          # Foreground icon
+          curl -L "${{ inputs.iconUrl }}" -o /tmp/ic_launcher_foreground.png
+          convert /tmp/ic_launcher_foreground.png -resize 192x192\! "$MIPMAP_DIR/ic_launcher_foreground.png"
 
-          if [ "${{ inputs.backgroundUrl }}" != "" ]; then
-            curl -L "${{ inputs.backgroundUrl }}" -o /tmp/ic_launcher_background.png
-          fi
+          # Transparent background 192x192
+          convert -size 192x192 xc:none "$MIPMAP_DIR/ic_launcher_background.png"
 
-          # Loop all DPI folders
-          for folder in "${!dpi_sizes[@]}"; do
-            SIZE=${dpi_sizes[$folder]}
-            TARGET_DIR="$ANDROID_DIR/app/src/main/res/$folder"
-            mkdir -p "$TARGET_DIR"
-
-            if [ -f /tmp/ic_launcher_foreground.png ]; then
-              convert /tmp/ic_launcher_foreground.png -resize ${SIZE}x${SIZE}\! "$TARGET_DIR/ic_launcher_foreground.png"
-            fi
-
-            if [ -f /tmp/ic_launcher_background.png ]; then
-              convert /tmp/ic_launcher_background.png -resize ${SIZE}x${SIZE}\! "$TARGET_DIR/ic_launcher_background.png"
-            fi
-          done
-
-          # Replace default mipmap folder (192x192 kotak)
-          DEFAULT_DIR="$ANDROID_DIR/app/src/main/res/mipmap"
-          mkdir -p "$DEFAULT_DIR"
-          if [ -f /tmp/ic_launcher_foreground.png ]; then
-            convert /tmp/ic_launcher_foreground.png -resize 192x192\! "$DEFAULT_DIR/ic_launcher_foreground.png"
-          fi
-          if [ -f /tmp/ic_launcher_background.png ]; then
-            convert /tmp/ic_launcher_background.png -resize 192x192\! "$DEFAULT_DIR/ic_launcher_background.png"
-          fi
-
-          echo "All mipmap icons replaced successfully."
+          echo "Replaced mipmap default icons: foreground from URL, background transparan"
 
       - name: Build APK
         run: |
