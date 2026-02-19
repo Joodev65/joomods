@@ -15,6 +15,9 @@ on:
       backgroundUrl:
         description: 'URL background (wajib PNG)'
         required: false
+      jobId:
+        description: 'Job ID unik dari API'
+        required: true
 
 jobs:
   build:
