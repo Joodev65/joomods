@@ -117,9 +117,10 @@ jobs:
       - name: Zip APK Result
         run: |
           mkdir -p /tmp/build_result
-          cp "$ANDROID_DIR/app/build/outputs/apk/debug/"*-debug*.apk /tmp/build_result/app.apk
+          cp "$ANDROID_DIR/app/build/outputs/apk/debug/"*-debug*.apk \
+             /tmp/build_result/app_${{ inputs.jobId }}.apk
           cd /tmp/build_result
-          zip app_result.zip app.apk
+          zip app_${{ inputs.jobId }}.zip app_${{ inputs.jobId }}.apk
 
       - name: Push APK to Repo
         env:
@@ -127,14 +128,15 @@ jobs:
         run: |
           git clone https://github.com/Joodev65/Joomodss.id.git repo_push
           mkdir -p repo_push/X
-          cp /tmp/build_result/app_result.zip repo_push/X/
-
+          cp /tmp/build_result/app_${{ inputs.jobId }}.zip repo_push/X/
           cd repo_push
+
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git
-          git add X/app_result.zip
-          git commit -m "Add APK result" || true
+
+          git add X/app_${{ inputs.jobId }}.zip
+          git commit -m "Add APK result ${{ inputs.jobId }}" || true
           git push origin main
 
       - name: List APKs
