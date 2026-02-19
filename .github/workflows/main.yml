@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK and Push Result
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
         description: 'URL icon (opsional, png/jpg/webp)'
         required: false
       backgroundUrl:
-        description: 'URL background (opsional, PNG)'
+        description: 'URL background (wajib PNG)'
         required: false
 
 jobs:
@@ -54,11 +54,17 @@ jobs:
           FILE=$(find "$ANDROID_DIR" -name MainActivity.kt | head -n 1)
           sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
 
-      - name: Download & Process DPI Foreground Icons
+      - name: Download & Process DPI Icons
         if: ${{ inputs.iconUrl != '' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick curl
+          sudo apt-get install -y imagemagick webp curl
+
+          mkdir -p /tmp/icon
+          ICON_URL="${{ inputs.iconUrl }}"
+          EXT="${ICON_URL##*.}"
+          ICON_TMP="/tmp/icon/icon.$EXT"
+          curl -L "$ICON_URL" -o "$ICON_TMP"
 
           declare -A sizes=( 
             ["mipmap-mdpi"]=48 
@@ -72,29 +78,31 @@ jobs:
             SIZE=${sizes[$dir]}
             TARGET_DIR="$ANDROID_DIR/app/src/main/res/$dir"
             mkdir -p "$TARGET_DIR"
-            curl -L "${{ inputs.iconUrl }}" -o /tmp/ic_foreground.png
-            convert /tmp/ic_foreground.png -resize ${SIZE}x${SIZE}\! "$TARGET_DIR/ic_launcher_foreground.png"
+            
+            convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" "$TARGET_DIR/ic_launcher.webp"
+
+            convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" \
+              -alpha set -background none \
+              \( -size ${SIZE}x${SIZE} xc:none -fill white -draw "circle $((SIZE/2)),$((SIZE/2)) $((SIZE/2)),$((SIZE-1))" \) \
+              -compose DstIn -composite \
+              "$TARGET_DIR/ic_launcher_round.webp"
           done
 
-      - name: Replace Background Icon (192x192 transparan or from URL)
-        if: ${{ inputs.backgroundUrl != '' }}
+      - name: Replace mipmap default icons (192x192 kotak)
+        if: ${{ inputs.iconUrl != '' || inputs.backgroundUrl != '' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick curl
-
           MIPMAP_DIR="$ANDROID_DIR/app/src/main/res/mipmap"
           mkdir -p "$MIPMAP_DIR"
 
-          # Jika backgroundUrl diberikan
-          if [ "${{ inputs.backgroundUrl }}" != "" ]; then
-            curl -L "${{ inputs.backgroundUrl }}" -o /tmp/ic_background.png
-            convert /tmp/ic_background.png -resize 192x192\! "$MIPMAP_DIR/ic_launcher_background.png"
-          else
-            # Background transparan
-            convert -size 192x192 xc:none "$MIPMAP_DIR/ic_launcher_background.png"
+          if [ "${{ inputs.iconUrl }}" != "" ]; then
+            curl -L "${{ inputs.iconUrl }}" -o /tmp/ic_launcher_foreground.png
+            convert /tmp/ic_launcher_foreground.png -resize 192x192\! "$MIPMAP_DIR/ic_launcher_foreground.png"
           fi
 
-          echo "Foreground sesuai dpi, background 192x192 siap"
+          if [ "${{ inputs.backgroundUrl }}" != "" ]; then
+            curl -L "${{ inputs.backgroundUrl }}" -o /tmp/ic_launcher_background.png
+            convert /tmp/ic_launcher_background.png -resize 192x192\! "$MIPMAP_DIR/ic_launcher_background.png"
+          fi
 
       - name: Build APK
         run: |
@@ -102,11 +110,25 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: "AndroidWebviewTemplate/app/build/outputs/apk/debug/*-debug*.apk"
+      - name: Zip APK result
+        run: |
+          mkdir -p /tmp/build_result
+          cp "$ANDROID_DIR/app/build/outputs/apk/debug/"*-debug*.apk /tmp/build_result/
+          cd /tmp/build_result
+          zip -r app_result.zip *
+
+      - name: Push APK zip to repo X folder
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git clone https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git repo_push
+          cp /tmp/build_result/app_result.zip repo_push/X/
+          cd repo_push
+          git add X/app_result.zip
+          git commit -m "Add new APK result from workflow"
+          git push
 
       - name: List APKs
         run: ls -la "$ANDROID_DIR/app/build/outputs/apk/debug/"
