@@ -12,6 +12,9 @@ on:
       iconUrl:
         description: 'URL icon (opsional, png/jpg/webp)'
         required: false
+      backgroundUrl:
+        description: 'URL background (wajib PNG)'
+        required: false
 
 jobs:
   build:
@@ -77,7 +80,7 @@ jobs:
             mkdir -p "$TARGET_DIR"
             
             convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" "$TARGET_DIR/ic_launcher.webp"
-
+            
             convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" \
               -alpha set -background none \
               \( -size ${SIZE}x${SIZE} xc:none -fill white -draw "circle $((SIZE/2)),$((SIZE/2)) $((SIZE/2)),$((SIZE-1))" \) \
@@ -90,6 +93,22 @@ jobs:
           cd "$ANDROID_DIR"
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
+
+      - name: Replace ic_launcher_background.png
+        if: ${{ inputs.backgroundUrl != '' }}
+        run: |
+          # Download new background image (wajib PNG)
+          BG_URL="${{ inputs.backgroundUrl }}"
+          BG_TMP="/tmp/ic_launcher_background.png"
+          curl -L "$BG_URL" -o "$BG_TMP"
+
+          DRAWABLE_DIRS=$(find "$ANDROID_DIR/app/src/main/res" -type d -name "drawable*")
+          for dir in $DRAWABLE_DIRS; do
+            if [ -f "$dir/ic_launcher_background.png" ]; then
+              cp "$BG_TMP" "$dir/ic_launcher_background.png"
+              echo "Replaced $dir/ic_launcher_background.png"
+            fi
+          done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
