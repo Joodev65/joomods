@@ -51,43 +51,41 @@ jobs:
           FILE=$(find "$ANDROID_DIR" -name MainActivity.kt | head -n 1)
           sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
 
-      - name: Download & Replace App Icon (Adaptive)
+      - name: Download & Process App Icon
         if: ${{ inputs.iconUrl != '' }}
         run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick webp
+
           mkdir -p /tmp/icon
           ICON_URL="${{ inputs.iconUrl }}"
           EXT="${ICON_URL##*.}"
           ICON_TMP="/tmp/icon/icon.$EXT"
           curl -L "$ICON_URL" -o "$ICON_TMP"
 
-          sudo apt-get update
-          sudo apt-get install -y imagemagick webp
-
-          # Ukuran mipmap sesuai Android
+          # Define mipmap sizes
           declare -A sizes=( 
             ["mipmap-mdpi"]=48 
-            ["mipmap-hdpi"]=72 
-            ["mipmap-xhdpi"]=96 
-            ["mipmap-xxhdpi"]=144 
-            ["mipmap-xxxhdpi"]=192 
+            ["mipmap-hdpi"]=72
+            ["mipmap-xhdpi"]=96
+            ["mipmap-xxhdpi"]=144
+            ["mipmap-xxxhdpi"]=192
           )
 
-          for dir in "$ANDROID_DIR"/app/src/main/res/mipmap-*; do
-            NAME=$(basename "$dir")
-            SIZE=${sizes[$NAME]}
-            if [ -z "$SIZE" ]; then
-              continue
-            fi
+          for dir in "${!sizes[@]}"; do
+            SIZE=${sizes[$dir]}
+            TARGET_DIR="$ANDROID_DIR/app/src/main/res/$dir"
+            mkdir -p "$TARGET_DIR"
 
             # Kotak
-            convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" "$dir/ic_launcher.webp"
+            convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" "$TARGET_DIR/ic_launcher.webp"
 
-            # Lingkaran (crop + transparan)
-            convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" -alpha set -background none \
-              -gravity center -extent "${SIZE}x${SIZE}" \
-              \( +clone -threshold -1 -fill white -draw "circle $((SIZE/2)),$((SIZE/2)) $((SIZE/2)),$((SIZE-1))" \) \
+            # Lingkaran
+            convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" \
+              -alpha set -background none \
+              \( -size ${SIZE}x${SIZE} xc:none -fill white -draw "circle $((SIZE/2)),$((SIZE/2)) $((SIZE/2)),$((SIZE-1))" \) \
               -compose DstIn -composite \
-              "$dir/ic_launcher_round.webp"
+              "$TARGET_DIR/ic_launcher_round.webp"
           done
 
       - name: Build APK
