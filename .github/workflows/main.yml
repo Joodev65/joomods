@@ -54,7 +54,7 @@ jobs:
           FILE=$(find "$ANDROID_DIR" -name MainActivity.kt | head -n 1)
           sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
 
-      - name: Download & Process App Icon
+      - name: Download & Process DPI Icons
         if: ${{ inputs.iconUrl != '' }}
         run: |
           sudo apt-get update
@@ -79,8 +79,10 @@ jobs:
             TARGET_DIR="$ANDROID_DIR/app/src/main/res/$dir"
             mkdir -p "$TARGET_DIR"
             
+            # Kotak utama
             convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" "$TARGET_DIR/ic_launcher.webp"
-            
+
+            # Lingkaran
             convert "$ICON_TMP" -resize "${SIZE}x${SIZE}" \
               -alpha set -background none \
               \( -size ${SIZE}x${SIZE} xc:none -fill white -draw "circle $((SIZE/2)),$((SIZE/2)) $((SIZE/2)),$((SIZE-1))" \) \
@@ -88,27 +90,33 @@ jobs:
               "$TARGET_DIR/ic_launcher_round.webp"
           done
 
+      - name: Replace mipmap default icons (192x192 kotak)
+        if: ${{ inputs.iconUrl != '' || inputs.backgroundUrl != '' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick webp curl
+
+          MIPMAP_DIR="$ANDROID_DIR/app/src/main/res/mipmap"
+          mkdir -p "$MIPMAP_DIR"
+
+          # Download icon/background
+          if [ "${{ inputs.iconUrl }}" != "" ]; then
+            curl -L "${{ inputs.iconUrl }}" -o /tmp/ic_launcher_foreground.png
+            convert /tmp/ic_launcher_foreground.png -resize 192x192\! "$MIPMAP_DIR/ic_launcher_foreground.png"
+          fi
+
+          if [ "${{ inputs.backgroundUrl }}" != "" ]; then
+            curl -L "${{ inputs.backgroundUrl }}" -o /tmp/ic_launcher_background.png
+            convert /tmp/ic_launcher_background.png -resize 192x192\! "$MIPMAP_DIR/ic_launcher_background.png"
+          fi
+
+          echo "Replaced mipmap default icons (192x192 kotak)"
+
       - name: Build APK
         run: |
           cd "$ANDROID_DIR"
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
-
-      - name: Replace ic_launcher_background.png
-        if: ${{ inputs.backgroundUrl != '' }}
-        run: |
-          # Download new background image (wajib PNG)
-          BG_URL="${{ inputs.backgroundUrl }}"
-          BG_TMP="/tmp/ic_launcher_background.png"
-          curl -L "$BG_URL" -o "$BG_TMP"
-
-          DRAWABLE_DIRS=$(find "$ANDROID_DIR/app/src/main/res" -type d -name "drawable*")
-          for dir in $DRAWABLE_DIRS; do
-            if [ -f "$dir/ic_launcher_background.png" ]; then
-              cp "$BG_TMP" "$dir/ic_launcher_background.png"
-              echo "Replaced $dir/ic_launcher_background.png"
-            fi
-          done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
