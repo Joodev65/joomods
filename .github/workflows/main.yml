@@ -10,7 +10,7 @@ on:
         description: 'URL aplikasi'
         required: true
       iconUrl:
-        description: 'URL icon (opsional)'
+        description: 'URL icon (opsional, png/jpg/webp)'
         required: false
 
 jobs:
@@ -40,24 +40,15 @@ jobs:
           fi
           DIR=$(dirname "$ROOT")
           echo "ANDROID_DIR=$DIR" >> $GITHUB_ENV
-          echo "Android dir: $DIR"
 
       - name: Inject App Name
         run: |
           STRINGS=$(find "$ANDROID_DIR" -path "*res/values/strings.xml" | head -n 1)
-          if [ -z "$STRINGS" ]; then
-            echo "strings.xml not found"
-            exit 1
-          fi
           sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${{ inputs.appName }}</string>|" "$STRINGS"
 
       - name: Inject App URL
         run: |
           FILE=$(find "$ANDROID_DIR" -name MainActivity.kt | head -n 1)
-          if [ -z "$FILE" ]; then
-            echo "MainActivity.kt not found"
-            exit 1
-          fi
           sed -i "s|%%APP_URL%%|${{ inputs.appUrl }}|g" "$FILE"
 
       - name: Download & Replace App Icon
@@ -71,25 +62,20 @@ jobs:
 
           sudo apt-get update
           sudo apt-get install -y imagemagick webp
-
-          declare -A icons=(
-            ["ic_launcher"]="ic_launcher.webp"
-            ["ic_launcher_round"]="ic_launcher_round.webp"
-          )
-
-          for name in "${!icons[@]}"; do
-            for dir in "$ANDROID_DIR"/app/src/main/res/mipmap-*/; do
-              FILE=$(basename "$dir")
- 
-              if [[ "$FILE" == *"v26"* ]]; then
-                continue
-              fi
-              TARGET="$dir/${icons[$name]}"
-              if [ -f "$TARGET" ] || [[ "$name" == "ic_launcher" ]]; then
-                convert "$ICON_TMP" -resize 192x192 "$TARGET"
-              fi
-            done
+          
+          for dir in "$ANDROID_DIR"/app/src/main/res/mipmap-*/; do
+            FILE=$(basename "$dir")
+            if [[ "$FILE" == *"v26"* ]]; then
+              continue
+            fi
+            convert "$ICON_TMP" -resize 192x192 "$dir/ic_launcher.webp"
+            convert "$ICON_TMP" -resize 192x192 "$dir/ic_launcher_round.webp"
           done
+
+      - name: Clean Build
+        run: |
+          cd "$ANDROID_DIR"
+          ./gradlew clean
 
       - name: Build APK
         run: |
@@ -101,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: "AndroidWebviewTemplate/app/build/outputs/apk/debug/*-debug*.apk"
+          path: "$ANDROID_DIR/app/build/outputs/apk/debug/*-debug*.apk"
 
       - name: List APKs
         run: ls -la "$ANDROID_DIR/app/build/outputs/apk/debug/"
