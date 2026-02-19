@@ -87,27 +87,11 @@ jobs:
               "$TARGET_DIR/ic_launcher_round.webp"
           done
 
-          # Fallback mipmap (untuk launcher lama)
+          # Copy fallback to mipmap
           FALLBACK_DIR="$ANDROID_DIR/app/src/main/res/mipmap"
           mkdir -p "$FALLBACK_DIR"
           cp "$ANDROID_DIR/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp" "$FALLBACK_DIR/ic_launcher.webp"
           cp "$ANDROID_DIR/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp" "$FALLBACK_DIR/ic_launcher_round.webp"
-
-          # Adaptive XML (launcher modern)
-          ADAPTIVE_XML_DIR="$ANDROID_DIR/app/src/main/res/mipmap-anydpi-v26"
-          mkdir -p "$ADAPTIVE_XML_DIR"
-
-          echo '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@mipmap/ic_launcher"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
-</adaptive-icon>' > "$ADAPTIVE_XML_DIR/ic_launcher.xml"
-
-          echo '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@mipmap/ic_launcher"/>
-    <foreground android:drawable="@mipmap/ic_launcher_round"/>
-    <monochrome android:drawable="@mipmap/ic_launcher_round"/>
-</adaptive-icon>' > "$ADAPTIVE_XML_DIR/ic_launcher_round.xml"
 
       - name: Build APK
         run: |
@@ -119,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: "$ANDROID_DIR/app/build/outputs/apk/debug/*-debug*.apk"
+          path: "AndroidWebviewTemplate/app/build/outputs/apk/debug/*-debug*.apk"
 
       - name: List APKs
         run: ls -la "$ANDROID_DIR/app/build/outputs/apk/debug/"
