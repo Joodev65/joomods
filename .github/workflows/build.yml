@@ -12,24 +12,33 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
+      # Checkout repo (optional, mostly untuk GH Actions context)
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # Install Flutter SDK
       - name: Install Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.13.0'
+          flutter-version: '3.13.0-stable'
+          channel: 'stable'
 
+      # Verify Flutter version
+      - name: Check Flutter Version
+        run: flutter --version
+
+      # Download and unzip project
       - name: Download ZIP
         run: |
           mkdir -p /tmp/build
           curl -L "${{ inputs.zipUrl }}" -o /tmp/build/project.zip
           unzip -q /tmp/build/project.zip -d /tmp/build/project
 
-      - name: Locate Flutter project
+      # Locate Flutter project directory
+      - name: Locate Flutter Project
         run: |
           ROOT=$(find /tmp/build/project -name pubspec.yaml | head -n 1)
           if [ -z "$ROOT" ]; then
@@ -40,23 +49,28 @@ jobs:
           echo "FLUTTER_DIR=$DIR" >> $GITHUB_ENV
           echo "Flutter project dir: $DIR"
 
-      - name: Enable Flutter dependencies
+      # Install dependencies
+      - name: Flutter Pub Get
         run: |
           cd "$FLUTTER_DIR"
           flutter pub get
 
+      # Build APK (release mode optional, bisa debug)
       - name: Build APK
         run: |
           cd "$FLUTTER_DIR"
-          flutter build apk --release
+          flutter build apk --debug --no-shrink
 
+      # Zip APK result
       - name: Zip APK Result
         run: |
           mkdir -p /tmp/build_result
-          cp "$FLUTTER_DIR/build/app/outputs/flutter-apk/app-release.apk" /tmp/build_result/app_${{ inputs.jobId }}.apk
+          cp "$FLUTTER_DIR/build/app/outputs/flutter-apk/app-debug.apk" \
+             /tmp/build_result/app_${{ inputs.jobId }}.apk
           cd /tmp/build_result
           zip app_${{ inputs.jobId }}.zip app_${{ inputs.jobId }}.apk
 
+      # Push APK ZIP to repo
       - name: Push APK to Repo
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -65,14 +79,13 @@ jobs:
           mkdir -p repo_push/X
           cp /tmp/build_result/app_${{ inputs.jobId }}.zip repo_push/X/
           cd repo_push
-
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git
-
           git add X/app_${{ inputs.jobId }}.zip
-          git commit -m "Add Flutter APK from ZIP job ${{ inputs.jobId }}" || true
+          git commit -m "Add Flutter APK job ${{ inputs.jobId }}" || true
           git push origin main
 
+      # List APKs
       - name: List APKs
         run: ls -la "$FLUTTER_DIR/build/app/outputs/flutter-apk/"
