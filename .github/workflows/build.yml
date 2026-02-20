@@ -18,11 +18,10 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # Gunakan Flutter versi stabil yang tersedia
       - name: Install Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.10.6-stable'
+          flutter-version: '3.10.6'  # tanpa -stable
           channel: 'stable'
 
       - name: Check Flutter Version
