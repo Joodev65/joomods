@@ -42,7 +42,6 @@ jobs:
           fi
           DIR=$(dirname "$ROOT")
           echo "ANDROID_DIR=$DIR" >> $GITHUB_ENV
-          echo "Android dir: $DIR"
 
       - name: Build APK
         run: |
@@ -74,6 +73,3 @@ jobs:
           git add X/app_${{ inputs.jobId }}.zip
           git commit -m "Add APK from ZIP job ${{ inputs.jobId }}" || true
           git push origin main
-
-      - name: List APKs
-        run: ls -la "$ANDROID_DIR/app/build/outputs/apk/debug/"
