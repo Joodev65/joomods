@@ -24,38 +24,51 @@ jobs:
       - name: Install base deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip curl git openjdk-17-jdk
+          sudo apt-get install -y unzip curl git openjdk-17-jdk libarchive-tools
 
       - name: Download ZIP
         run: |
-          mkdir -p build
+          mkdir -p build/project
           curl -L "${{ inputs.zipUrl }}" -o build/project.zip
-          unzip -qq -o build/project.zip -d build/project
+
+          echo "Extracting ZIP..."
+          bsdtar -xf build/project.zip -C build/project
+
+      - name: Normalize project structure
+        run: |
+          echo "Normalizing structure..."
+
+          COUNT=$(ls build/project | wc -l)
+
+          if [ "$COUNT" = "1" ]; then
+            FIRST=$(ls build/project)
+            if [ -d "build/project/$FIRST" ]; then
+              mv build/project/$FIRST/* build/project/ 2>/dev/null || true
+            fi
+          fi
 
       - name: Debug project structure
         run: |
-          echo "=== PROJECT STRUCTURE ==="
-          find build/project -maxdepth 4
+          echo "Project files:"
+          find build/project -maxdepth 3
 
       - name: Detect project type
         run: |
-          PUBSPEC=$(find build/project -type f -name pubspec.yaml | head -n1)
+          PUBSPEC=$(find build/project -name pubspec.yaml | head -n1)
 
-          if [ -n "$PUBSPEC" ]; then
-            ROOT=$(dirname "$PUBSPEC")
+          if [ ! -z "$PUBSPEC" ]; then
             echo "TYPE=flutter" >> $GITHUB_ENV
-            echo "PROJECT_DIR=$ROOT" >> $GITHUB_ENV
-            echo "Detected Flutter project: $ROOT"
+            echo "DIR=$(dirname "$PUBSPEC")" >> $GITHUB_ENV
+            echo "Detected Flutter project at $(dirname "$PUBSPEC")"
             exit 0
           fi
 
-          GRADLE=$(find build/project -type f -name gradlew | head -n1)
+          GRADLE=$(find build/project -name gradlew | head -n1)
 
-          if [ -n "$GRADLE" ]; then
-            ROOT=$(dirname "$GRADLE")
+          if [ ! -z "$GRADLE" ]; then
             echo "TYPE=gradle" >> $GITHUB_ENV
-            echo "PROJECT_DIR=$ROOT" >> $GITHUB_ENV
-            echo "Detected Gradle project: $ROOT"
+            echo "DIR=$(dirname "$GRADLE")" >> $GITHUB_ENV
+            echo "Detected Gradle project at $(dirname "$GRADLE")"
             exit 0
           fi
 
@@ -72,39 +85,37 @@ jobs:
       - name: Flutter pub get
         if: env.TYPE == 'flutter'
         run: |
-          cd "$PROJECT_DIR"
+          cd "$DIR"
           flutter pub get
 
       - name: Build Flutter APK
         if: env.TYPE == 'flutter'
         run: |
-          cd "$PROJECT_DIR"
+          cd "$DIR"
           flutter build apk --release
 
       - name: Build Gradle APK
         if: env.TYPE == 'gradle'
         run: |
-          cd "$PROJECT_DIR"
+          cd "$DIR"
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      - name: Locate APK
+      - name: Collect APK
         run: |
-          echo "Searching APK..."
-          APK=$(find build -type f -name "*release*.apk" | head -n1)
+          mkdir -p result
+
+          APK=$(find build -name "*release*.apk" | head -n1)
 
           if [ -z "$APK" ]; then
             echo "APK not found"
             exit 1
           fi
 
-          echo "APK_PATH=$APK" >> $GITHUB_ENV
           echo "APK found: $APK"
 
-      - name: Pack APK
-        run: |
-          mkdir -p result
-          cp "$APK_PATH" result/app_${{ inputs.jobId }}.apk
+          cp "$APK" result/app_${{ inputs.jobId }}.apk
+
           cd result
           zip app_${{ inputs.jobId }}.zip app_${{ inputs.jobId }}.apk
 
@@ -124,6 +135,7 @@ jobs:
           cp result/app_${{ inputs.jobId }}.zip repo/X/
 
           cd repo
+
           git config user.name "Actions Bot"
           git config user.email "actions@github.com"
 
