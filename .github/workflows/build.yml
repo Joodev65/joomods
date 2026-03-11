@@ -1,13 +1,16 @@
-name: Build APK from ZIP
+name: Universal APK Builder
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
   workflow_dispatch:
     inputs:
       zipUrl:
-        description: 'URL ZIP project'
+        description: "ZIP project URL"
         required: true
       jobId:
-        description: 'Unique job ID'
+        description: "Job ID"
         required: true
 
 jobs:
@@ -15,20 +18,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install base deps
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip curl git openjdk-17-jdk
-
-      - name: Install Flutter
-        run: |
-          FLUTTER_VERSION="3.41.0-stable"
-          curl -L https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}.tar.xz -o flutter.tar.xz
-          tar xf flutter.tar.xz
-          echo "$PWD/flutter/bin" >> $GITHUB_PATH
-          flutter --version
 
       - name: Download ZIP
         run: |
@@ -36,34 +32,41 @@ jobs:
           curl -L "${{ inputs.zipUrl }}" -o build/project.zip
           unzip -q build/project.zip -d build/project
 
-      - name: Detect Project Type
+      - name: Detect project type
         run: |
-          ROOT=$(find build/project -name pubspec.yaml | head -n 1)
+          FLUTTER=$(find build/project -name pubspec.yaml | head -n1)
+          GRADLE=$(find build/project -name gradlew | head -n1)
 
-          if [ ! -z "$ROOT" ]; then
+          if [ ! -z "$FLUTTER" ]; then
             echo "TYPE=flutter" >> $GITHUB_ENV
-            echo "DIR=$(dirname $ROOT)" >> $GITHUB_ENV
+            echo "DIR=$(dirname $FLUTTER)" >> $GITHUB_ENV
             echo "Detected Flutter project"
-            exit 0
-          fi
-
-          ROOT=$(find build/project -name gradlew | head -n 1)
-
-          if [ ! -z "$ROOT" ]; then
+          elif [ ! -z "$GRADLE" ]; then
             echo "TYPE=gradle" >> $GITHUB_ENV
-            echo "DIR=$(dirname $ROOT)" >> $GITHUB_ENV
+            echo "DIR=$(dirname $GRADLE)" >> $GITHUB_ENV
             echo "Detected Gradle project"
-            exit 0
+          else
+            echo "Project type unsupported"
+            exit 1
           fi
 
-          echo "Project type not supported"
-          exit 1
+      - name: Setup Flutter
+        if: env.TYPE == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.0'
+          cache: true
+
+      - name: Flutter pub get
+        if: env.TYPE == 'flutter'
+        run: |
+          cd "$DIR"
+          flutter pub get
 
       - name: Build Flutter APK
         if: env.TYPE == 'flutter'
         run: |
           cd "$DIR"
-          flutter pub get
           flutter build apk --release
 
       - name: Build Gradle APK
@@ -76,7 +79,7 @@ jobs:
       - name: Collect APK
         run: |
           mkdir result
-          APK=$(find build -name "*release*.apk" | head -n 1)
+          APK=$(find build -name "*release*.apk" | head -n1)
 
           if [ -z "$APK" ]; then
             echo "APK not found"
@@ -87,7 +90,13 @@ jobs:
           cd result
           zip app_${{ inputs.jobId }}.zip app_${{ inputs.jobId }}.apk
 
-      - name: Push APK
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk_${{ inputs.jobId }}
+          path: result/app_${{ inputs.jobId }}.zip
+
+      - name: Push to Repo
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
@@ -101,5 +110,5 @@ jobs:
 
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git
           git add .
-          git commit -m "Build APK ${{ inputs.jobId }}" || true
+          git commit -m "Add APK ${{ inputs.jobId }}" || true
           git push
