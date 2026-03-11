@@ -28,9 +28,9 @@ jobs:
 
       - name: Download ZIP
         run: |
-          mkdir build
+          mkdir -p build
           curl -L "${{ inputs.zipUrl }}" -o build/project.zip
-          unzip -q build/project.zip -d build/project
+          unzip -qq -o build/project.zip -d build/project
 
       - name: Detect project type
         run: |
@@ -39,11 +39,11 @@ jobs:
 
           if [ ! -z "$FLUTTER" ]; then
             echo "TYPE=flutter" >> $GITHUB_ENV
-            echo "DIR=$(dirname $FLUTTER)" >> $GITHUB_ENV
+            echo "DIR=$(dirname "$FLUTTER")" >> $GITHUB_ENV
             echo "Detected Flutter project"
           elif [ ! -z "$GRADLE" ]; then
             echo "TYPE=gradle" >> $GITHUB_ENV
-            echo "DIR=$(dirname $GRADLE)" >> $GITHUB_ENV
+            echo "DIR=$(dirname "$GRADLE")" >> $GITHUB_ENV
             echo "Detected Gradle project"
           else
             echo "Project type unsupported"
@@ -54,7 +54,7 @@ jobs:
         if: env.TYPE == 'flutter'
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.0'
+          flutter-version: "3.41.0"
           cache: true
 
       - name: Flutter pub get
@@ -78,7 +78,7 @@ jobs:
 
       - name: Collect APK
         run: |
-          mkdir result
+          mkdir -p result
           APK=$(find build -name "*release*.apk" | head -n1)
 
           if [ -z "$APK" ]; then
