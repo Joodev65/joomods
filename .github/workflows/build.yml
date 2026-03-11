@@ -34,26 +34,28 @@ jobs:
 
       - name: Debug project structure
         run: |
-          echo "Project files:"
-          find build/project -maxdepth 3
+          echo "=== PROJECT STRUCTURE ==="
+          find build/project -maxdepth 4
 
       - name: Detect project type
         run: |
-          PUBSPEC=$(find build/project -name pubspec.yaml | head -n1)
+          PUBSPEC=$(find build/project -type f -name pubspec.yaml | head -n1)
 
-          if [ ! -z "$PUBSPEC" ]; then
+          if [ -n "$PUBSPEC" ]; then
+            ROOT=$(dirname "$PUBSPEC")
             echo "TYPE=flutter" >> $GITHUB_ENV
-            echo "DIR=$(dirname "$PUBSPEC")" >> $GITHUB_ENV
-            echo "Detected Flutter project at $(dirname "$PUBSPEC")"
+            echo "PROJECT_DIR=$ROOT" >> $GITHUB_ENV
+            echo "Detected Flutter project: $ROOT"
             exit 0
           fi
 
-          GRADLE=$(find build/project -name gradlew | head -n1)
+          GRADLE=$(find build/project -type f -name gradlew | head -n1)
 
-          if [ ! -z "$GRADLE" ]; then
+          if [ -n "$GRADLE" ]; then
+            ROOT=$(dirname "$GRADLE")
             echo "TYPE=gradle" >> $GITHUB_ENV
-            echo "DIR=$(dirname "$GRADLE")" >> $GITHUB_ENV
-            echo "Detected Gradle project at $(dirname "$GRADLE")"
+            echo "PROJECT_DIR=$ROOT" >> $GITHUB_ENV
+            echo "Detected Gradle project: $ROOT"
             exit 0
           fi
 
@@ -70,37 +72,39 @@ jobs:
       - name: Flutter pub get
         if: env.TYPE == 'flutter'
         run: |
-          cd "$DIR"
+          cd "$PROJECT_DIR"
           flutter pub get
 
       - name: Build Flutter APK
         if: env.TYPE == 'flutter'
         run: |
-          cd "$DIR"
+          cd "$PROJECT_DIR"
           flutter build apk --release
 
       - name: Build Gradle APK
         if: env.TYPE == 'gradle'
         run: |
-          cd "$DIR"
+          cd "$PROJECT_DIR"
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      - name: Collect APK
+      - name: Locate APK
         run: |
-          mkdir -p result
-
-          APK=$(find build -name "*release*.apk" | head -n1)
+          echo "Searching APK..."
+          APK=$(find build -type f -name "*release*.apk" | head -n1)
 
           if [ -z "$APK" ]; then
             echo "APK not found"
             exit 1
           fi
 
-          echo "APK found at: $APK"
+          echo "APK_PATH=$APK" >> $GITHUB_ENV
+          echo "APK found: $APK"
 
-          cp "$APK" result/app_${{ inputs.jobId }}.apk
-
+      - name: Pack APK
+        run: |
+          mkdir -p result
+          cp "$APK_PATH" result/app_${{ inputs.jobId }}.apk
           cd result
           zip app_${{ inputs.jobId }}.zip app_${{ inputs.jobId }}.apk
 
@@ -120,7 +124,6 @@ jobs:
           cp result/app_${{ inputs.jobId }}.zip repo/X/
 
           cd repo
-
           git config user.name "Actions Bot"
           git config user.email "actions@github.com"
 
