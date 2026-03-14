@@ -23,6 +23,7 @@ jobs:
 
       - name: Install base deps
         run: |
+          set -e
           sudo apt-get update
           sudo apt-get install -y curl git zip unzip openjdk-17-jdk libarchive-tools
 
@@ -42,8 +43,11 @@ jobs:
           find build/project -name ".DS_Store" -type f -delete 2>/dev/null || true
 
       - name: Normalize project structure
+        shell: bash
         run: |
           set -e
+          shopt -s dotglob nullglob
+
           echo "Normalizing structure..."
 
           while true; do
@@ -57,7 +61,6 @@ jobs:
 
             if [ -d "$FIRST" ]; then
               TMP_DIR=$(mktemp -d)
-              shopt -s dotglob nullglob
               mv "$FIRST"/* "$TMP_DIR"/ 2>/dev/null || true
               rm -rf "$FIRST"
               mv "$TMP_DIR"/* build/project/ 2>/dev/null || true
@@ -224,27 +227,32 @@ jobs:
       - name: Push to Repo
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
+        shell: bash
         run: |
           set -e
-          git clone https://github.com/Joodev65/Joomodss.id.git repo
 
-          mkdir -p repo/X
-          cp "result/app_${{ inputs.jobId }}.zip" repo/X/
+          rm -rf repo
+          git clone "https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git" repo
+
+          cp "result/app_${{ inputs.jobId }}.zip" "repo/X/app_${{ inputs.jobId }}.zip" 2>/dev/null || {
+            mkdir -p repo/X
+            cp "result/app_${{ inputs.jobId }}.zip" "repo/X/app_${{ inputs.jobId }}.zip"
+          }
 
           cd repo
           git config user.name "Actions Bot"
           git config user.email "actions@github.com"
-          git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git"
 
-          git add .
-          git commit -m "Add APK ${{ inputs.jobId }}" || true
-          git push          cd repo
+          DEFAULT_BRANCH="$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')"
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH="main"
+          fi
 
-          git config user.name "Actions Bot"
-          git config user.email "actions@github.com"
+          echo "Default branch: $DEFAULT_BRANCH"
 
-          git remote set-url origin https://x-access-token:${GH_PAT}@github.com/Joodev65/Joomodss.id.git
+          git checkout "$DEFAULT_BRANCH" || git checkout -b "$DEFAULT_BRANCH"
 
-          git add .
-          git commit -m "Add APK ${{ inputs.jobId }}" || true
-          git push
+          git add "X/app_${{ inputs.jobId }}.zip"
+          git commit -m "Add APK ${{ inputs.jobId }}" || echo "No changes to commit"
+
+          git push origin "HEAD:$DEFAULT_BRANCH"
