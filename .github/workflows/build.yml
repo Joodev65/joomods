@@ -55,10 +55,7 @@ jobs:
 
           echo "Original URL: $URL"
 
-          # remove quotes
           URL=$(echo "$URL" | tr -d '"')
-
-          # fix github blob
           URL=$(echo "$URL" | sed 's/github.com/raw.githubusercontent.com/' | sed 's/\/blob\//\//')
 
           echo "Normalized URL: $URL"
@@ -74,15 +71,12 @@ jobs:
           success=0
 
           for i in 1 2 3 4 5; do
-
             echo "Attempt $i"
 
             curl -L --fail --retry 3 --connect-timeout 20 "$ZIP_URL" -o build/project.zip && success=1 && break
-
             wget -O build/project.zip "$ZIP_URL" && success=1 && break
 
             sleep 3
-
           done
 
           if [ $success -ne 1 ]; then
@@ -91,7 +85,6 @@ jobs:
           fi
 
           echo "Download complete"
-
           ls -lh build
 
       - name: Validate ZIP
@@ -171,22 +164,38 @@ jobs:
 
       - name: Detect project type
         run: |
+          echo "Scanning project..."
+          
+          PUBSPEC=$(find build/project -type f -name pubspec.yaml | head -n1)
 
-          PUBSPEC=$(find build/project -name pubspec.yaml | head -n1)
-
-          if [ ! -z "$PUBSPEC" ]; then
+          if [ -n "$PUBSPEC" ]; then
+            echo "Flutter project detected"
             echo "TYPE=flutter" >> $GITHUB_ENV
             echo "DIR=$(dirname "$PUBSPEC")" >> $GITHUB_ENV
             exit 0
           fi
 
-          GRADLE=$(find build/project -name gradlew | head -n1)
+          GRADLEW=$(find build/project -type f -name gradlew | head -n1)
 
-          if [ ! -z "$GRADLE" ]; then
+          if [ -n "$GRADLEW" ]; then
+            echo "Gradle project detected"
+            echo "TYPE=gradle"
             echo "TYPE=gradle" >> $GITHUB_ENV
-            echo "DIR=$(dirname "$GRADLE")" >> $GITHUB_ENV
+            echo "DIR=$(dirname "$GRADLEW")" >> $GITHUB_ENV
             exit 0
           fi
+
+          ANDROID=$(find build/project -type d -name android | head -n1)
+
+          if [ -n "$ANDROID" ]; then
+            echo "Android folder detected"
+            echo "TYPE=gradle" >> $GITHUB_ENV
+            echo "DIR=$ANDROID" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "Project structure:"
+          find build/project -maxdepth 6
 
           echo "Unsupported project"
           exit 1
