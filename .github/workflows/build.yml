@@ -62,14 +62,20 @@ jobs:
 
           echo "ZIP_URL=$URL" >> $GITHUB_ENV
 
-      - name: Download project ZIP
+      - name: Download project ZIP (robust)
         run: |
           mkdir -p build
 
+          echo "Downloading project..."
+
           success=0
+
           for i in 1 2 3 4 5; do
+            echo "Attempt $i"
+
             curl -L --fail --retry 3 --connect-timeout 20 "$ZIP_URL" -o build/project.zip && success=1 && break
             wget -O build/project.zip "$ZIP_URL" && success=1 && break
+
             sleep 3
           done
 
@@ -78,9 +84,13 @@ jobs:
             exit 1
           fi
 
+          echo "Download complete"
+          ls -lh build
+
       - name: Validate ZIP
         run: |
           FILETYPE=$(file build/project.zip)
+
           echo "$FILETYPE"
 
           if [[ "$FILETYPE" != *"Zip archive"* ]]; then
@@ -91,14 +101,20 @@ jobs:
       - name: Extract project
         run: |
           mkdir -p build/project
+
+          echo "Extracting ZIP..."
+
           bsdtar -xf build/project.zip -C build/project \
           || unzip -o build/project.zip -d build/project
 
       - name: Normalize project structure
         run: |
+          echo "Normalizing project structure..."
+
           COUNT=$(find build/project -mindepth 1 -maxdepth 1 | wc -l)
 
           if [ "$COUNT" = "1" ]; then
+
             FIRST=$(find build/project -mindepth 1 -maxdepth 1 | head -n1)
 
             if [ -d "$FIRST" ]; then
@@ -106,13 +122,54 @@ jobs:
               mv "$FIRST"/.[!.]* build/project/ 2>/dev/null || true
               mv "$FIRST"/..?* build/project/ 2>/dev/null || true
             fi
+
           fi
+
+      - name: Debug project files
+        run: |
+          echo "Project structure:"
+          find build/project -maxdepth 4
+
+      - name: Generate launcher icons
+        run: |
+          BASE="build/project/android/app/src/main/res"
+
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+
+            case $d in
+              mdpi) SIZE=48 ;;
+              hdpi) SIZE=72 ;;
+              xhdpi) SIZE=96 ;;
+              xxhdpi) SIZE=144 ;;
+              xxxhdpi) SIZE=192 ;;
+            esac
+
+            DIR="$BASE/mipmap-$d"
+            ICON="$DIR/ic_launcher.png"
+
+            mkdir -p "$DIR"
+
+            if [ -f "$ICON" ]; then
+              convert "$ICON" -resize ${SIZE}x${SIZE} "$ICON" || true
+            else
+              convert -size ${SIZE}x${SIZE} xc:"#3DDC84" \
+                -gravity center \
+                -pointsize 24 \
+                -fill white \
+                -annotate 0 "A" \
+                "$ICON"
+            fi
+
+          done
 
       - name: Detect project type
         run: |
+          echo "Scanning project..."
+          
           PUBSPEC=$(find build/project -type f -name pubspec.yaml | head -n1)
 
           if [ -n "$PUBSPEC" ]; then
+            echo "Flutter project detected"
             echo "TYPE=flutter" >> $GITHUB_ENV
             echo "DIR=$(dirname "$PUBSPEC")" >> $GITHUB_ENV
             exit 0
@@ -121,10 +178,24 @@ jobs:
           GRADLEW=$(find build/project -type f -name gradlew | head -n1)
 
           if [ -n "$GRADLEW" ]; then
+            echo "Gradle project detected"
+            echo "TYPE=gradle"
             echo "TYPE=gradle" >> $GITHUB_ENV
             echo "DIR=$(dirname "$GRADLEW")" >> $GITHUB_ENV
             exit 0
           fi
+
+          ANDROID=$(find build/project -type d -name android | head -n1)
+
+          if [ -n "$ANDROID" ]; then
+            echo "Android folder detected"
+            echo "TYPE=gradle" >> $GITHUB_ENV
+            echo "DIR=$ANDROID" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "Project structure:"
+          find build/project -maxdepth 6
 
           echo "Unsupported project"
           exit 1
@@ -144,48 +215,11 @@ jobs:
         if: env.TYPE == 'flutter'
         run: |
           cd "$DIR"
-          flutter pub get || flutter pub get || true
 
-      - name: Patch Android Gradle
-        if: env.TYPE == 'flutter'
-        run: |
-          echo "Patching Gradle..."
-          ANDROID="$DIR/android"
-
-          if [ -d "$ANDROID" ]; then
-
-            find "$ANDROID" -name "build.gradle" -type f -exec sed -i 's/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.9.1/g' {} \; || true
-
-            if [ -f "$ANDROID/gradle/wrapper/gradle-wrapper.properties" ]; then
-              sed -i 's/gradle-[0-9.]*-bin/gradle-8.10-bin/g' "$ANDROID/gradle/wrapper/gradle-wrapper.properties"
-            fi
-
-          fi
-
-      - name: Patch missing Flutter files
-        if: env.TYPE == 'flutter'
-        run: |
-          LIB="$DIR/lib"
-
-          if [ ! -f "$LIB/admin_page.dart" ]; then
-            echo "Generating missing admin_page.dart"
-            cat <<EOF > "$LIB/admin_page.dart"
-import 'package:flutter/material.dart';
-
-class AdminPage extends StatelessWidget {
-  final String? sessionKey;
-
-  const AdminPage({super.key, this.sessionKey});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text("Admin Placeholder")),
-    );
-  }
-}
-EOF
-          fi
+          for i in 1 2 3; do
+            flutter pub get && break
+            sleep 3
+          done
 
       - name: Build Flutter APK
         if: env.TYPE == 'flutter'
@@ -194,21 +228,15 @@ EOF
 
           flutter build apk --release \
           || flutter build apk --release --no-tree-shake-icons \
-          || flutter build apk --debug \
-          || flutter build apk --profile
-
-      - name: Last resort Gradle build
-        if: env.TYPE == 'flutter'
-        run: |
-          cd "$DIR/android"
-          chmod +x gradlew || true
-          ./gradlew assembleDebug || true
+          || flutter build apk --debug
 
       - name: Build Gradle APK
         if: env.TYPE == 'gradle'
         run: |
           cd "$DIR"
+
           chmod +x gradlew
+
           ./gradlew assembleRelease \
           || ./gradlew build \
           || ./gradlew assembleDebug
@@ -223,6 +251,8 @@ EOF
             echo "APK not found"
             exit 1
           fi
+
+          echo "APK found: $APK"
 
           cp "$APK" result/app_${{ inputs.jobId }}.apk
 
